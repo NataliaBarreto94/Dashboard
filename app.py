@@ -53,9 +53,9 @@ div[role="radiogroup"] label:has(input:checked) {{
 """, unsafe_allow_html=True)
 
 # ============================
-# ARQUIVO
+# CAMINHO DO ARQUIVO
 # ============================
-ARQUIVO = r"C:\Users\Forno\Desktop\SAP\IW38_novo.xlsx"
+CAMINHO_ARQUIVO = os.path.join("data", "IW38_novo.xlsx")
 
 # ============================
 # CARREGAMENTO DOS DADOS
@@ -63,7 +63,7 @@ ARQUIVO = r"C:\Users\Forno\Desktop\SAP\IW38_novo.xlsx"
 @st.cache_data(ttl=300)
 def carregar_dados(caminho):
     if not os.path.exists(caminho):
-        st.error(f"Arquivo não encontrado:\n{caminho}")
+        st.error(f"Arquivo não encontrado: {caminho}")
         return pd.DataFrame()
 
     df = pd.read_excel(caminho)
@@ -77,7 +77,7 @@ def carregar_dados(caminho):
     return df
 
 # ============================
-# AJUSTE STATUS
+# AJUSTE DE STATUS
 # ============================
 def ajustar_status(df):
     def map_status(status):
@@ -109,7 +109,7 @@ CORES_STATUS = {
 # ============================
 # LEITURA
 # ============================
-df = carregar_dados(ARQUIVO)
+df = carregar_dados(CAMINHO_ARQUIVO)
 df = ajustar_status(df)
 
 if df.empty:
@@ -191,7 +191,7 @@ k4.metric("Atrasadas", atrasadas)
 st.divider()
 
 # ============================
-# NAVEGAÇÃO (SUBSTITUI ABAS)
+# NAVEGAÇÃO
 # ============================
 aba = st.radio(
     "Visualizações",
@@ -209,21 +209,21 @@ aba = st.radio(
 # GRÁFICOS
 # ============================
 if aba == "Por Status":
-    g1 = px.histogram(
+    fig = px.histogram(
         df_f,
         x="Status do sistema",
         color="Status do sistema",
         color_discrete_map=CORES_STATUS,
         title="Distribuição por Status"
     )
-    st.plotly_chart(g1, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 elif aba == "Por Local":
     base = df_f.groupby(
         ["Local de instalação", "Status do sistema"]
     ).size().reset_index(name="Qtd")
 
-    g2 = px.bar(
+    fig = px.bar(
         base,
         x="Local de instalação",
         y="Qtd",
@@ -231,14 +231,14 @@ elif aba == "Por Local":
         color_discrete_map=CORES_STATUS,
         title="Ordens por Local"
     )
-    st.plotly_chart(g2, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 elif aba == "Por Centro de Trabalho":
     base = df_f.groupby(
         ["CenTrab.principal", "Status do sistema"]
     ).size().reset_index(name="Qtd")
 
-    g3 = px.bar(
+    fig = px.bar(
         base,
         x="CenTrab.principal",
         y="Qtd",
@@ -246,14 +246,14 @@ elif aba == "Por Centro de Trabalho":
         color_discrete_map=CORES_STATUS,
         title="Ordens por Centro de Trabalho"
     )
-    st.plotly_chart(g3, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 elif aba == "Por Campo de ordenação":
     base = df_f.groupby(
         ["Campo de ordenação", "Status do sistema"]
     ).size().reset_index(name="Qtd")
 
-    g4 = px.bar(
+    fig = px.bar(
         base,
         x="Campo de ordenação",
         y="Qtd",
@@ -261,12 +261,12 @@ elif aba == "Por Campo de ordenação":
         color_discrete_map=CORES_STATUS,
         title="Ordens por Campo de ordenação"
     )
-    st.plotly_chart(g4, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 
 # ============================
-# BACKLOG POR SEMANA
+# BACKLOG SEMANAL
 # ============================
 st.subheader("Backlog por semana")
 
@@ -291,7 +291,7 @@ else:
         .sort_values("Ano-Semana")
     )
 
-    g_backlog = px.bar(
+    fig = px.bar(
         base_backlog,
         x="Ano-Semana",
         y="Qtd",
@@ -300,10 +300,10 @@ else:
         color_discrete_sequence=[AMARELO]
     )
 
-    g_backlog.update_traces(textposition="outside")
-    g_backlog.update_layout(xaxis_tickangle=-45)
+    fig.update_traces(textposition="outside")
+    fig.update_layout(xaxis_tickangle=-45)
 
-    st.plotly_chart(g_backlog, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 
@@ -312,4 +312,3 @@ st.divider()
 # ============================
 st.subheader("Programação")
 st.dataframe(df_f, use_container_width=True)
-
