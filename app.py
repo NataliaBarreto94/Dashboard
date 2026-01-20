@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 import os
+import re
 
 # ============================
 # CONFIGURAÇÃO DA PÁGINA
@@ -21,7 +22,7 @@ CINZA_ESCURO = "#1c1f26"
 CINZA_CLARO = "#b0b3b8"
 
 # ============================
-# CSS GLOBAL (AVP)
+# CSS GLOBAL
 # ============================
 st.markdown(f"""
 <style>
@@ -30,7 +31,6 @@ html, body, [class*="css"] {{
     color: white;
 }}
 
-/* RADIO = ABAS */
 div[role="radiogroup"] label {{
     color: {CINZA_CLARO} !important;
     font-size: 16px;
@@ -43,7 +43,6 @@ div[role="radiogroup"] label:has(input:checked) {{
     border-bottom: 3px solid {AMARELO};
 }}
 
-/* KPIs */
 [data-testid="metric-container"] {{
     background-color: {CINZA_ESCURO};
     padding: 15px;
@@ -55,7 +54,7 @@ div[role="radiogroup"] label:has(input:checked) {{
 # ============================
 # CAMINHO DO ARQUIVO
 # ============================
-CAMINHO_ARQUIVO = os.path.join("data", "IW38_novo.xlsx")
+CAMINHO_ARQUIVO = r"C:\Users\Forno\Desktop\IW28\IW28.xlsx"
 
 # ============================
 # CARREGAMENTO DOS DADOS
@@ -69,10 +68,12 @@ def carregar_dados(caminho):
     df = pd.read_excel(caminho)
     df.columns = [c.strip() for c in df.columns]
 
-    if "Data-base do fim" in df.columns:
-        df["Data-base do fim"] = pd.to_datetime(
-            df["Data-base do fim"], errors="coerce"
-        )
+    df["Conclusão desejada"] = pd.to_datetime(
+        df.get("Conclusão desejada"), errors="coerce"
+    )
+    df["Criado em"] = pd.to_datetime(
+        df.get("Criado em"), errors="coerce"
+    )
 
     return df
 
@@ -82,27 +83,18 @@ def carregar_dados(caminho):
 def ajustar_status(df):
     def map_status(status):
         s = str(status)
-
-        if all(x in s for x in ["LIB", "CAPC", "MatC", "NOAP"]):
-            return "Liberado"
-
-        if all(x in s for x in ["ABER", "CAPC", "SCDM"]):
-            return "Aguardando liberação"
-
-        if all(x in s for x in ["LIB", "CONF", "CAPC", "JBFI", "NOAP", "SCDM"]):
+        if "CNF" in s:
             return "Confirmada"
-
+        if "ORDA" in s or "MSPR" in s:
+            return "Em aberto"
         return "Outros"
 
-    if "Status do sistema" in df.columns:
-        df["Status do sistema"] = df["Status do sistema"].apply(map_status)
-
+    df["Status do sistema"] = df["Status do sistema"].apply(map_status)
     return df
 
 CORES_STATUS = {
     "Confirmada": "#1dd268",
-    "Liberado": AMARELO,
-    "Aguardando liberação": "#44a5e6",
+    "Em aberto": AMARELO,
     "Outros": "#ec7c40"
 }
 
@@ -116,10 +108,21 @@ if df.empty:
     st.stop()
 
 # ============================
+# SOMENTE CÓDIGO MACRO
+# ============================
+def manter_codigo_macro(texto):
+    if pd.isna(texto):
+        return None
+    match = re.search(r"[A-Z]{2}-\d{5}", str(texto))
+    return match.group() if match else None
+
+df["Local de instalação"] = df["Local de instalação"].apply(manter_codigo_macro)
+
+# ============================
 # CABEÇALHO
 # ============================
 st.title("Dashboard — AVP | Manutenção | Processo")
-st.caption("Fonte: SAP")
+st.caption("Fonte: SAP - IW28")
 
 # ============================
 # FILTROS
@@ -128,7 +131,7 @@ c1, c2, c3, c4 = st.columns(4)
 
 with c1:
     filtro_local = st.multiselect(
-        "Local de instalação",
+        "Código Macro",
         sorted(df["Local de instalação"].dropna().unique())
     )
 
@@ -152,19 +155,14 @@ with c4:
 
 def aplicar_filtros(_df):
     df_f = _df.copy()
-
     if filtro_local:
         df_f = df_f[df_f["Local de instalação"].isin(filtro_local)]
-
     if filtro_status:
         df_f = df_f[df_f["Status do sistema"].isin(filtro_status)]
-
     if filtro_centro:
         df_f = df_f[df_f["CenTrab.principal"].isin(filtro_centro)]
-
     if filtro_ord:
         df_f = df_f[df_f["Campo de ordenação"].isin(filtro_ord)]
-
     return df_f
 
 df_f = aplicar_filtros(df)
@@ -178,14 +176,14 @@ nao_confirmadas = total - confirmadas
 
 hoje = pd.Timestamp(datetime.today().date())
 atrasadas = (
-    (df_f["Data-base do fim"] < hoje) &
+    (df_f["Conclusão desejada"] < hoje) &
     (df_f["Status do sistema"] != "Confirmada")
 ).sum()
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Total de Ordens", total)
 k2.metric("Confirmadas", confirmadas)
-k3.metric("Não confirmadas", nao_confirmadas)
+k3.metric("Em aberto", nao_confirmadas)
 k4.metric("Atrasadas", atrasadas)
 
 st.divider()
@@ -197,7 +195,7 @@ aba = st.radio(
     "Visualizações",
     [
         "Por Status",
-        "Por Local",
+        "Por Código Macro",
         "Por Centro de Trabalho",
         "Por Campo de ordenação"
     ],
@@ -206,7 +204,7 @@ aba = st.radio(
 )
 
 # ============================
-# GRÁFICOS
+# GRÁFICOS (COM VALOR NO TOPO)
 # ============================
 if aba == "Por Status":
     fig = px.histogram(
@@ -214,11 +212,13 @@ if aba == "Por Status":
         x="Status do sistema",
         color="Status do sistema",
         color_discrete_map=CORES_STATUS,
-        title="Distribuição por Status"
+        title="Distribuição por Status",
+        text_auto=True
     )
+    fig.update_traces(textposition="outside")
     st.plotly_chart(fig, use_container_width=True)
 
-elif aba == "Por Local":
+elif aba == "Por Código Macro":
     base = df_f.groupby(
         ["Local de instalação", "Status do sistema"]
     ).size().reset_index(name="Qtd")
@@ -229,8 +229,10 @@ elif aba == "Por Local":
         y="Qtd",
         color="Status do sistema",
         color_discrete_map=CORES_STATUS,
-        title="Ordens por Local"
+        title="Ordens por Código Macro",
+        text="Qtd"
     )
+    fig.update_traces(textposition="outside")
     st.plotly_chart(fig, use_container_width=True)
 
 elif aba == "Por Centro de Trabalho":
@@ -244,8 +246,10 @@ elif aba == "Por Centro de Trabalho":
         y="Qtd",
         color="Status do sistema",
         color_discrete_map=CORES_STATUS,
-        title="Ordens por Centro de Trabalho"
+        title="Ordens por Centro de Trabalho",
+        text="Qtd"
     )
+    fig.update_traces(textposition="outside")
     st.plotly_chart(fig, use_container_width=True)
 
 elif aba == "Por Campo de ordenação":
@@ -259,8 +263,10 @@ elif aba == "Por Campo de ordenação":
         y="Qtd",
         color="Status do sistema",
         color_discrete_map=CORES_STATUS,
-        title="Ordens por Campo de ordenação"
+        title="Ordens por Campo de ordenação",
+        text="Qtd"
     )
+    fig.update_traces(textposition="outside")
     st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
@@ -272,13 +278,13 @@ st.subheader("Backlog por semana")
 
 df_backlog = df_f[
     (df_f["Status do sistema"] != "Confirmada") &
-    (df_f["Data-base do fim"].notna())
+    (df_f["Conclusão desejada"].notna())
 ]
 
 if df_backlog.empty:
     st.info("Nenhuma ordem em backlog.")
 else:
-    iso = df_backlog["Data-base do fim"].dt.isocalendar()
+    iso = df_backlog["Conclusão desejada"].dt.isocalendar()
     df_backlog["Ano-Semana"] = (
         iso.year.astype(str) + "-W" +
         iso.week.astype(str).str.zfill(2)
@@ -299,7 +305,6 @@ else:
         title="Backlog semanal",
         color_discrete_sequence=[AMARELO]
     )
-
     fig.update_traces(textposition="outside")
     fig.update_layout(xaxis_tickangle=-45)
 
